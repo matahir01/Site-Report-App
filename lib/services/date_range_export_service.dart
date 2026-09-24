@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../models/expense.dart';
 import '../models/reporting_models.dart';
 
 class DateRangeExportService {
