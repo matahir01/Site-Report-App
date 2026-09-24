@@ -1,0 +1,15 @@
+Put the actual font files here before building:
+  assets/fonts/Roboto-Regular.ttf
+  assets/fonts/Roboto-Bold.ttf
+
+pubspec.yaml already declares these two paths under flutter -> fonts,
+and lib/services/pdf_report_service.dart already loads them via
+rootBundle at PDF-generation time. Until the real .ttf files are
+placed here, `flutter run`/`flutter build` will fail with a missing
+asset error, and PDF export will throw at runtime even if the build
+somehow succeeds.
+
+Get them free from Google Fonts: https://fonts.google.com/specimen/Roboto
+(download family -> use "Roboto-Regular.ttf" and "Roboto-Bold.ttf" from
+the "static" folder). Delete this text file once the real fonts are in
+place.

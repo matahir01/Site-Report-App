@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylised civil-engineering mark: framed structure / bridge portal -->
+    <path
+        android:fillColor="#D89B2B"
+        android:pathData="M28,73 L28,35 L36,35 L36,67 L72,67 L72,35 L80,35 L80,73 Z" />
+    <path
+        android:fillColor="#D89B2B"
+        android:pathData="M34,39 L54,25 L74,39 L70,45 L54,34 L38,45 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,48 L66,48 L66,54 L42,54 Z M42,58 L66,58 L66,64 L42,64 Z" />
+</vector>
