@@ -25,10 +25,6 @@ import '../utils/currency_formatter.dart';
 /// On-device PDF report generation for sites, projects, and individual
 /// daily logs.
 class PdfReportService {
-  static String _categoryLabel(ExpenseCategory c) {
-    return c.label;
-  }
-
   // ---- Naira-glyph fix (Option 2: custom TTF fonts) ----
   //
   // The `pdf` package's built-in base14 fonts (Helvetica etc.) have no ₦
