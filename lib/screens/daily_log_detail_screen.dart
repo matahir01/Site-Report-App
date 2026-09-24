@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../db/database_helper.dart';
 import '../models/daily_log.dart';
@@ -21,6 +20,7 @@ import '../models/worker.dart';
 import '../utils/currency_formatter.dart';
 import '../services/daily_site_report_store.dart';
 import '../services/professional_daily_report_service.dart';
+import '../services/report_file_service.dart';
 
 /// Read-only daily log detail with attendance, materials, equipment,
 /// concrete/QC, expenses, professional report metadata, and one-tap PDF export.
@@ -120,12 +120,23 @@ class _DailyLogDetailScreenState extends State<DailyLogDetailScreen> {
         cashFloat: _cashFloat,
       );
       if (mounted) {
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [XFile(file.path)],
-            text: 'Daily Site Progress Report — ${widget.site.name}',
-          ),
-        );
+        final saved = await ReportFileService.savePdfToDownloadsAndOpen(file);
+        if (!mounted) return;
+        if (saved == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('PDF generated at ${file.path}')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                saved.opened
+                    ? 'DPR saved to Downloads/Civil Site Manager and opened.'
+                    : 'DPR saved to Downloads/Civil Site Manager. No PDF viewer opened it automatically.',
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

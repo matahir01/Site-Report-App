@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
+import '../db/database_helper.dart';
 import '../models/project.dart';
 import '../models/site.dart';
 import '../models/daily_log.dart';
@@ -64,6 +65,7 @@ class PdfReportService {
     return theme;
   }
 
+
   static Future<File> generateSiteReport({
     required Project project,
     required Site site,
@@ -72,60 +74,22 @@ class PdfReportService {
   }) async {
     final theme = await _loadTheme();
     final doc = pw.Document(theme: theme);
-    final dateFmt = DateFormat.yMMMd();
-    final total = expenses.fold<double>(0, (sum, e) => sum + e.amount);
+    final floats = await DatabaseHelper.instance.getCashFloatsForSite(site.id);
 
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (context) => _buildReportHeader(
-          'SITE REPORT',
-          site.name,
-          project.name,
-          site.address,
-        ),
-        footer: (context) => _buildFooter(context),
-        build: (context) => [
-          _sectionTitle('DAILY LOGS', _steelBlue),
-          pw.SizedBox(height: 8),
-          if (logs.isEmpty) _emptyCard('No daily logs recorded.'),
-          ...logs.map((log) => _logBlock(log, dateFmt)),
-          pw.NewPage(),
-          _sectionTitle('EXPENSES', _steelBlue),
-          pw.SizedBox(height: 8),
-          if (expenses.isEmpty) _emptyCard('No expenses recorded.'),
-          if (expenses.isNotEmpty) ...[
-            _buildTable(
-              headers: ['Date', 'Category', 'Amount', 'Note'],
-              rows: expenses
-                  .map(
-                    (e) => [
-                      dateFmt.format(e.date),
-                      _categoryLabel(e.category),
-                      CurrencyFormatter.format(e.amount),
-                      e.note ?? '',
-                    ],
-                  )
-                  .toList(),
-              navy: _navy,
-              iceBlue: _iceBlue,
-              slateBorder: _slateBorder,
-              columnWidths: {
-                0: const pw.FixedColumnWidth(70),
-                1: const pw.FlexColumnWidth(1.4),
-                2: const pw.FixedColumnWidth(70),
-                3: const pw.FlexColumnWidth(2.2),
-              },
-            ),
-            pw.SizedBox(height: 8),
-            _totalBar('TOTAL', total, _navy),
-          ],
-        ],
-      ),
+    _addWorkbookMirrorReport(
+      doc: doc,
+      reportType: 'SITE AUDIT REPORT',
+      title: site.name,
+      subtitle: project.name,
+      detailLine: site.address ?? project.client ?? 'Construction site',
+      sites: [site],
+      logsBySite: {site.id: logs},
+      expenses: expenses,
+      cashFloats: floats,
+      includeSite: false,
     );
 
-    return _saveDoc(doc, '${site.name}_report');
+    return _saveDoc(doc, '${site.name}_audit_report');
   }
 
   static Future<File> generateProjectReport({
@@ -136,95 +100,556 @@ class PdfReportService {
   }) async {
     final theme = await _loadTheme();
     final doc = pw.Document(theme: theme);
-    final dateFmt = DateFormat.yMMMd();
-
-    double projectTotal = 0;
-    for (final e in expensesBySite.values.expand((x) => x)) {
-      projectTotal += e.amount;
+    final expenses = expensesBySite.values.expand((items) => items).toList();
+    final cashFloats = <CashFloat>[];
+    for (final site in sites) {
+      cashFloats.addAll(
+        await DatabaseHelper.instance.getCashFloatsForSite(site.id),
+      );
     }
+
+    _addWorkbookMirrorReport(
+      doc: doc,
+      reportType: 'PROJECT AUDIT REPORT',
+      title: project.name,
+      subtitle: project.client ?? 'Client not recorded',
+      detailLine: '${sites.length} site${sites.length == 1 ? '' : 's'}',
+      sites: sites,
+      logsBySite: logsBySite,
+      expenses: expenses,
+      cashFloats: cashFloats,
+      includeSite: sites.length > 1,
+    );
+
+    return _saveDoc(doc, '${project.name}_audit_report');
+  }
+
+  static void _addWorkbookMirrorReport({
+    required pw.Document doc,
+    required String reportType,
+    required String title,
+    required String subtitle,
+    required String detailLine,
+    required List<Site> sites,
+    required Map<String, List<DailyLog>> logsBySite,
+    required List<Expense> expenses,
+    required List<CashFloat> cashFloats,
+    required bool includeSite,
+  }) {
+    final siteNames = {for (final site in sites) site.id: site.name};
+    final sortedExpenses = [...expenses]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final sortedFloats = [...cashFloats]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final grandTotal = sortedExpenses.fold<double>(
+      0,
+      (sum, expense) => sum + expense.amount,
+    );
+    final totalFloat = sortedFloats.fold<double>(
+      0,
+      (sum, cashFloat) => sum + cashFloat.floatReceived,
+    );
+
+    final months =
+        sortedExpenses.map((expense) => expense.monthKey).toSet().toList()
+          ..sort();
+    final categoryTotals = <ExpenseCategory, double>{
+      for (final category in ExpenseCategory.values) category: 0,
+    };
+    final categoryCounts = <ExpenseCategory, int>{
+      for (final category in ExpenseCategory.values) category: 0,
+    };
+    final monthTotals = <String, double>{for (final month in months) month: 0};
+    final monthCategoryTotals = <String, Map<ExpenseCategory, double>>{
+      for (final month in months)
+        month: {for (final category in ExpenseCategory.values) category: 0},
+    };
+    final dailyExpenseTotals = <String, double>{};
+
+    for (final expense in sortedExpenses) {
+      categoryTotals[expense.category] =
+          categoryTotals[expense.category]! + expense.amount;
+      categoryCounts[expense.category] = categoryCounts[expense.category]! + 1;
+      monthTotals[expense.monthKey] =
+          (monthTotals[expense.monthKey] ?? 0) + expense.amount;
+      monthCategoryTotals[expense.monthKey]![expense.category] =
+          monthCategoryTotals[expense.monthKey]![expense.category]! +
+          expense.amount;
+      final dateKey = DateFormat('yyyy-MM-dd').format(expense.date);
+      final key = '${expense.siteId}|$dateKey';
+      dailyExpenseTotals[key] = (dailyExpenseTotals[key] ?? 0) + expense.amount;
+    }
+
+    final latestBalanceBySite = <String, double>{};
+    for (final cashFloat in sortedFloats) {
+      latestBalanceBySite[cashFloat.siteId] = cashFloat.expectedClosingBalance;
+    }
+    final currentBalance = sortedFloats.isEmpty
+        ? totalFloat - grandTotal
+        : latestBalanceBySite.values.fold<double>(
+            0,
+            (sum, value) => sum + value,
+          );
+
+    ExpenseCategory? highestCategory;
+    double highestSpend = 0;
+    for (final entry in categoryTotals.entries) {
+      if (entry.value > highestSpend) {
+        highestCategory = entry.key;
+        highestSpend = entry.value;
+      }
+    }
+
+    final activeDates = sortedExpenses
+        .map((expense) => DateFormat('yyyy-MM-dd').format(expense.date))
+        .toSet()
+        .length;
+    final averageDailySpend = activeDates == 0 ? 0.0 : grandTotal / activeDates;
+    final logCount = logsBySite.values.fold<int>(
+      0,
+      (sum, logs) => sum + logs.length,
+    );
+
+    final chartCategoryData = <String, double>{
+      for (final category in ExpenseCategory.values)
+        if ((categoryTotals[category] ?? 0) > 0)
+          category.label: categoryTotals[category] ?? 0,
+    };
+    final chartMonthData = <String, double>{
+      for (final month in months) month: monthTotals[month] ?? 0,
+    };
+    final burnDaily = <DateTime, double>{};
+    for (final expense in sortedExpenses) {
+      final day = DateTime(
+        expense.date.year,
+        expense.date.month,
+        expense.date.day,
+      );
+      burnDaily[day] = (burnDaily[day] ?? 0) + expense.amount;
+    }
+    final burnDays = burnDaily.keys.toList()..sort();
+    double cumulative = 0;
+    final burnPoints = <MapEntry<DateTime, double>>[];
+    for (final day in burnDays) {
+      cumulative += burnDaily[day] ?? 0;
+      burnPoints.add(MapEntry(day, cumulative));
+    }
+
+    final chartPalette = [
+      _steelBlue,
+      PdfColor.fromHex('#38B2AC'),
+      PdfColor.fromHex('#ED8936'),
+      PdfColor.fromHex('#9F7AEA'),
+      PdfColor.fromHex('#48BB78'),
+      PdfColor.fromHex('#F56565'),
+      PdfColor.fromHex('#ECC94B'),
+      PdfColor.fromHex('#718096'),
+      PdfColor.fromHex('#D53F8C'),
+      PdfColor.fromHex('#319795'),
+    ];
 
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        header: (context) => _buildReportHeader(
-          'PROJECT REPORT',
-          project.name,
-          project.client,
-          '${sites.length} site${sites.length == 1 ? '' : 's'}',
-        ),
+        margin: const pw.EdgeInsets.all(30),
+        header: (context) =>
+            _buildReportHeader(reportType, title, subtitle, detailLine),
         footer: (context) => _buildFooter(context),
         build: (context) => [
-          _totalBar('TOTAL PROJECT EXPENSES', projectTotal, _navy),
-          for (final site in sites) ...[
-            pw.NewPage(),
-            _sectionTitle(site.name.toUpperCase(), _steelBlue),
-            if (site.address != null)
-              pw.Text(
-                site.address!,
-                style: const pw.TextStyle(
-                  fontSize: 10,
-                  color: PdfColors.grey700,
-                ),
-              ),
-            pw.SizedBox(height: 10),
-            pw.Text(
-              'Daily Logs',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
-            ),
-            pw.SizedBox(height: 6),
-            if ((logsBySite[site.id] ?? []).isEmpty)
-              _emptyCard('No daily logs recorded.'),
-            ...(logsBySite[site.id] ?? []).map(
-              (log) => _logBlock(log, dateFmt),
-            ),
-            pw.SizedBox(height: 14),
-            pw.Text(
-              'Expenses',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
-            ),
-            pw.SizedBox(height: 6),
-            if ((expensesBySite[site.id] ?? []).isEmpty)
-              _emptyCard('No expenses recorded.')
-            else ...[
-              _buildTable(
-                headers: ['Date', 'Category', 'Amount', 'Note'],
-                rows: (expensesBySite[site.id] ?? [])
-                    .map(
-                      (e) => [
-                        dateFmt.format(e.date),
-                        _categoryLabel(e.category),
-                        CurrencyFormatter.format(e.amount),
-                        e.note ?? '',
-                      ],
-                    )
-                    .toList(),
-                navy: _navy,
-                iceBlue: _iceBlue,
-                slateBorder: _slateBorder,
-                columnWidths: {
-                  0: const pw.FixedColumnWidth(70),
-                  1: const pw.FlexColumnWidth(1.4),
-                  2: const pw.FixedColumnWidth(70),
-                  3: const pw.FlexColumnWidth(2.2),
-                },
-              ),
-              pw.SizedBox(height: 8),
-              _totalBar(
-                'SITE TOTAL',
-                (expensesBySite[site.id] ?? []).fold<double>(
-                  0,
-                  (s, e) => s + e.amount,
-                ),
-                _steelBlue,
-              ),
+          _sectionTitle('EXECUTIVE SUMMARY', _steelBlue),
+          pw.SizedBox(height: 8),
+          _buildKpiGrid([
+            ['Total Spend', CurrencyFormatter.format(grandTotal)],
+            ['Total Float Received', CurrencyFormatter.format(totalFloat)],
+            ['Current Cash Balance', CurrencyFormatter.format(currentBalance)],
+            ['Expense Items', sortedExpenses.length.toString()],
+            ['Daily Reports', logCount.toString()],
+            ['Active Spend Days', activeDates.toString()],
+            [
+              'Highest Cost Category',
+              grandTotal == 0
+                  ? 'No spend yet'
+                  : highestCategory?.label ?? 'No spend yet',
             ],
+            ['Average Daily Spend', CurrencyFormatter.format(averageDailySpend)],
+          ]),
+          pw.SizedBox(height: 14),
+          _sectionTitle('EXPENDITURE BY CATEGORY', _steelBlue),
+          pw.SizedBox(height: 8),
+          if (grandTotal == 0)
+            _emptyCard('No expenses recorded.')
+          else
+            _buildTable(
+              headers: ['Category', 'Spend', 'Items', '% of Total'],
+              rows: ExpenseCategory.values
+                  .map(
+                    (category) => [
+                      category.label,
+                      CurrencyFormatter.format(categoryTotals[category] ?? 0),
+                      (categoryCounts[category] ?? 0).toString(),
+                      grandTotal == 0
+                          ? '0.0%'
+                          : '${(((categoryTotals[category] ?? 0) / grandTotal) * 100).toStringAsFixed(1)}%',
+                    ],
+                  )
+                  .toList(),
+              navy: _navy,
+              iceBlue: _iceBlue,
+              slateBorder: _slateBorder,
+              columnWidths: {
+                0: const pw.FlexColumnWidth(2.5),
+                1: const pw.FlexColumnWidth(1.4),
+                2: const pw.FixedColumnWidth(45),
+                3: const pw.FixedColumnWidth(60),
+              },
+            ),
+          if (chartCategoryData.isNotEmpty) ...[
+            pw.SizedBox(height: 14),
+            _sectionTitle('COST DISTRIBUTION', _steelBlue),
+            pw.SizedBox(height: 8),
+            _pieChart(chartCategoryData, chartPalette),
+          ],
+          pw.NewPage(),
+          _sectionTitle('CONSTRUCTION PROGRESS LOG', _steelBlue),
+          pw.SizedBox(height: 8),
+          for (final site in sites) ...[
+            if (includeSite) ...[
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                color: _iceBlue,
+                child: pw.Text(
+                  site.name,
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    color: _navy,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 4),
+            ],
+            if ((logsBySite[site.id] ?? const <DailyLog>[]).isEmpty)
+              _emptyCard('No daily logs recorded for ${site.name}.')
+            else
+              ...(logsBySite[site.id] ?? const <DailyLog>[]).map(
+                (log) => _logBlock(log, DateFormat.yMMMd()),
+              ),
+            pw.SizedBox(height: 8),
           ],
         ],
       ),
     );
 
-    return _saveDoc(doc, '${project.name}_full_report');
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(24),
+        header: (context) => _buildReportHeader(
+          'PDF MIRROR OF EXCEL AUDIT WORKBOOK',
+          title,
+          subtitle,
+          'Financial schedules and audit trail',
+        ),
+        footer: (context) => _buildFooter(context),
+        build: (context) => [
+          _sectionTitle('1. REPORT GUIDE / AUDIT BASIS', _steelBlue),
+          pw.SizedBox(height: 8),
+          _buildTable(
+            headers: ['Workbook section', 'PDF equivalent / audit rule'],
+            rows: [
+              [
+                'Daily Log',
+                'Detailed expense ledger. Every amount is Quantity x Unit Price; use Quantity = 1 for lump-sum costs.',
+              ],
+              [
+                'Monthly Summary',
+                'Category-by-month matrix with category totals and monthly totals.',
+              ],
+              [
+                'Overall Summary',
+                'Category totals, item counts, percentage share and management KPIs.',
+              ],
+              [
+                'Cash Flow',
+                'Expected Closing = Opening Balance + Float Received - Daily Expenses.',
+              ],
+              [
+                'Variance',
+                'Reported Closing - Expected Closing. Exactly ${CurrencyFormatter.format(0)} is OK; every other value is CHECK / MISMATCH.',
+              ],
+              [
+                'Negative balance',
+                'Represents site deficit / engineer out-of-pocket advance carried forward until later funding offsets it.',
+              ],
+              [
+                'Charts',
+                'Monthly spend, category distribution and cumulative expenditure trend.',
+              ],
+            ],
+            navy: _navy,
+            iceBlue: _iceBlue,
+            slateBorder: _slateBorder,
+            columnWidths: {
+              0: const pw.FixedColumnWidth(110),
+              1: const pw.FlexColumnWidth(1),
+            },
+          ),
+          pw.NewPage(),
+          _sectionTitle('2. DETAILED EXPENSE LEDGER', _steelBlue),
+          pw.SizedBox(height: 8),
+          if (sortedExpenses.isEmpty)
+            _emptyCard('No expenses recorded.')
+          else
+            _buildTable(
+              headers: [
+                'Date',
+                if (includeSite) 'Site',
+                'S/N',
+                'Description',
+                'Unit',
+                'Qty',
+                'Unit Price',
+                'Total Amount',
+                'Category',
+              ],
+              rows: sortedExpenses
+                  .map(
+                    (expense) => [
+                      DateFormat('yyyy-MM-dd').format(expense.date),
+                      if (includeSite)
+                        siteNames[expense.siteId] ?? expense.siteId,
+                      expense.serialNo?.toString() ?? '',
+                      expense.displayDescription,
+                      expense.unit ?? '1',
+                      expense.quantity.toStringAsFixed(2),
+                      CurrencyFormatter.format(
+                        expense.unitPrice ?? expense.amount,
+                      ),
+                      CurrencyFormatter.format(expense.amount),
+                      expense.category.label,
+                    ],
+                  )
+                  .toList(),
+              navy: _navy,
+              iceBlue: _iceBlue,
+              slateBorder: _slateBorder,
+              columnWidths: {
+                0: const pw.FixedColumnWidth(58),
+              },
+            ),
+          if (sortedExpenses.isNotEmpty) ...[
+            pw.SizedBox(height: 8),
+            _totalBar('TOTAL EXPENDITURE', grandTotal, _navy),
+          ],
+          pw.NewPage(),
+          _sectionTitle('3. MONTHLY SUMMARY MATRIX', _steelBlue),
+          pw.SizedBox(height: 8),
+          if (months.isEmpty)
+            _emptyCard('No monthly expense data available.')
+          else
+            _buildTable(
+              headers: ['Category', ...months, 'Category Total'],
+              rows: [
+                for (final category in ExpenseCategory.values)
+                  [
+                    category.label,
+                    for (final month in months)
+                      CurrencyFormatter.format(
+                        monthCategoryTotals[month]?[category] ?? 0,
+                      ),
+                    CurrencyFormatter.format(categoryTotals[category] ?? 0),
+                  ],
+                [
+                  'MONTHLY TOTAL',
+                  for (final month in months)
+                    CurrencyFormatter.format(monthTotals[month] ?? 0),
+                  CurrencyFormatter.format(grandTotal),
+                ],
+              ],
+              navy: _navy,
+              iceBlue: _iceBlue,
+              slateBorder: _slateBorder,
+              columnWidths: {
+                0: const pw.FixedColumnWidth(120),
+              },
+            ),
+          pw.NewPage(),
+          _sectionTitle('4. OVERALL SUMMARY & KPIs', _steelBlue),
+          pw.SizedBox(height: 8),
+          _buildTable(
+            headers: ['Category', 'Total Spend', 'Item Count', '% of Total'],
+            rows: [
+              for (final category in ExpenseCategory.values)
+                [
+                  category.label,
+                  CurrencyFormatter.format(categoryTotals[category] ?? 0),
+                  (categoryCounts[category] ?? 0).toString(),
+                  grandTotal == 0
+                      ? '0.0%'
+                      : '${(((categoryTotals[category] ?? 0) / grandTotal) * 100).toStringAsFixed(1)}%',
+                ],
+              [
+                'TOTAL',
+                CurrencyFormatter.format(grandTotal),
+                sortedExpenses.length.toString(),
+                grandTotal == 0 ? '0.0%' : '100.0%',
+              ],
+            ],
+            navy: _navy,
+            iceBlue: _iceBlue,
+            slateBorder: _slateBorder,
+          ),
+          pw.SizedBox(height: 12),
+          _buildKpiGrid([
+            ['Total Site / Project Spend', CurrencyFormatter.format(grandTotal)],
+            ['Total Float Received', CurrencyFormatter.format(totalFloat)],
+            ['Current Cash Balance', CurrencyFormatter.format(currentBalance)],
+            [
+              'Highest Cost Category',
+              grandTotal == 0
+                  ? 'No spend yet'
+                  : highestCategory?.label ?? 'No spend yet',
+            ],
+            [
+              'Highest Category Share',
+              grandTotal == 0
+                  ? '0.0%'
+                  : '${(highestSpend / grandTotal * 100).toStringAsFixed(1)}%',
+            ],
+            ['Average Daily Spend', CurrencyFormatter.format(averageDailySpend)],
+          ]),
+          pw.NewPage(),
+          _sectionTitle('5. CASH FLOW & RECONCILIATION', _steelBlue),
+          pw.SizedBox(height: 8),
+          if (sortedFloats.isEmpty)
+            _emptyCard('No cash-float reconciliations recorded.')
+          else
+            _buildTable(
+              headers: [
+                'Date',
+                if (includeSite) 'Site',
+                'Opening',
+                'Float Top-up',
+                'Daily Expenses',
+                'Expected Closing',
+                'Reported Closing',
+                'Variance',
+                'Status',
+              ],
+              rows: sortedFloats.map((cashFloat) {
+                final date = DateFormat('yyyy-MM-dd').format(cashFloat.date);
+                final daily =
+                    dailyExpenseTotals['${cashFloat.siteId}|$date'] ?? 0;
+                final expected = cashFloat.openingBalance +
+                    cashFloat.floatReceived -
+                    daily;
+                final variance = cashFloat.reportedClosingBalance - expected;
+                return [
+                  date,
+                  if (includeSite)
+                    siteNames[cashFloat.siteId] ?? cashFloat.siteId,
+                  CurrencyFormatter.format(cashFloat.openingBalance),
+                  CurrencyFormatter.format(cashFloat.floatReceived),
+                  CurrencyFormatter.format(daily),
+                  CurrencyFormatter.format(expected),
+                  CurrencyFormatter.format(cashFloat.reportedClosingBalance),
+                  CurrencyFormatter.format(variance),
+                  variance.abs() < 0.005 ? 'OK' : 'CHECK / MISMATCH',
+                ];
+              }).toList(),
+              navy: _navy,
+              iceBlue: _iceBlue,
+              slateBorder: _slateBorder,
+            ),
+          pw.NewPage(),
+          _sectionTitle('6. MANAGEMENT CHARTS', _steelBlue),
+          pw.SizedBox(height: 8),
+          if (chartMonthData.isEmpty && chartCategoryData.isEmpty)
+            _emptyCard('No expense data available for charts.')
+          else ...[
+            if (chartMonthData.isNotEmpty) ...[
+              pw.Text(
+                'Total Spend by Month',
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              _barChart(chartMonthData, _steelBlue),
+              pw.SizedBox(height: 16),
+            ],
+            if (chartCategoryData.isNotEmpty) ...[
+              pw.Text(
+                'Expense Breakdown by Category',
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              _pieChart(chartCategoryData, chartPalette),
+              pw.SizedBox(height: 16),
+            ],
+            if (burnPoints.isNotEmpty) ...[
+              pw.Text(
+                'Cumulative Expenditure Trend',
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              _lineChart(burnPoints, _steelBlue),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildKpiGrid(List<List<String>> values) {
+    return pw.Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: values
+          .map(
+            (item) => pw.Container(
+              width: 245,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: _iceBlue,
+                border: pw.Border.all(color: _slateBorder),
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    item[0],
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 3),
+                  pw.Text(
+                    item[1],
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                      color: _navy,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
   }
 
   /// Generates a single daily-log "executive report" with navy/steel-blue

@@ -10,6 +10,7 @@ import '../models/expense.dart';
 import '../models/material_item.dart';
 import '../services/pdf_report_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/report_file_service.dart';
 import '../utils/currency_formatter.dart';
 import 'add_daily_log_screen.dart';
 import 'add_expense_screen.dart';
@@ -103,12 +104,26 @@ class _SiteDetailScreenState extends State<SiteDetailScreen> {
         expenses: _expenses,
       );
       if (mounted) {
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [XFile(file.path)],
-            text: '${widget.site.name} report',
-          ),
-        );
+        final saved = await ReportFileService.savePdfToDownloadsAndOpen(file);
+        if (!mounted) return;
+        if (saved == null) {
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(file.path)],
+              text: '${widget.site.name} report',
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                saved.opened
+                    ? 'PDF saved to Downloads/Civil Site Manager and opened.'
+                    : 'PDF saved to Downloads/Civil Site Manager. No PDF viewer opened it automatically.',
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

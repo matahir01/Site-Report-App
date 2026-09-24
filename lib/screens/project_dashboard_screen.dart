@@ -11,6 +11,7 @@ import '../models/expense.dart';
 import '../models/material_item.dart';
 import '../services/pdf_report_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/report_file_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/brand_widgets.dart';
 import 'site_detail_screen.dart';
@@ -72,13 +73,28 @@ class _ProjectDashboardScreenState extends State<ProjectDashboardScreen> {
         logsBySite: logsBySite,
         expensesBySite: expensesBySite,
       );
-      if (mounted)
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [XFile(file.path)],
-            text: '${widget.project.name} project report',
-          ),
-        );
+      if (mounted) {
+        final saved = await ReportFileService.savePdfToDownloadsAndOpen(file);
+        if (!mounted) return;
+        if (saved == null) {
+          await SharePlus.instance.share(
+            ShareParams(
+              files: [XFile(file.path)],
+              text: '${widget.project.name} project report',
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                saved.opened
+                    ? 'Project PDF saved to Downloads/Civil Site Manager and opened.'
+                    : 'Project PDF saved to Downloads/Civil Site Manager. No PDF viewer opened it automatically.',
+              ),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(
