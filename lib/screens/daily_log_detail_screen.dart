@@ -592,8 +592,6 @@ class _DailyLogDetailScreenState extends State<DailyLogDetailScreen> {
     required String? name,
     required String? path,
   }) {
-    final available =
-        path != null && path.isNotEmpty && File(path).existsSync();
     return SizedBox(
       width: 190,
       child: Column(
