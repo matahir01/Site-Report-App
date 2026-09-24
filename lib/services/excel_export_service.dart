@@ -132,13 +132,13 @@ class ExcelExportService {
   ) {
     final sheet = excel['Instructions'];
     _title(sheet, 'CONSTRUCTION SITE EXPENSE & FLOAT AUDIT WORKBOOK', 6);
-    _set(sheet, 0, 2, const TextCellValue('Project'));
+    _set(sheet, 0, 2, TextCellValue('Project'));
     _set(sheet, 1, 2, TextCellValue(project.name));
-    _set(sheet, 0, 3, const TextCellValue('Client'));
+    _set(sheet, 0, 3, TextCellValue('Client'));
     _set(sheet, 1, 3, TextCellValue(project.client ?? 'Not recorded'));
-    _set(sheet, 0, 4, const TextCellValue('Site(s)'));
+    _set(sheet, 0, 4, TextCellValue('Site(s)'));
     _set(sheet, 1, 4, TextCellValue(sites.map((site) => site.name).join(', ')));
-    _set(sheet, 0, 5, const TextCellValue('Generated'));
+    _set(sheet, 0, 5, TextCellValue('Generated'));
     _set(
       sheet,
       1,
@@ -218,7 +218,7 @@ class ExcelExportService {
       final values = <CellValue?>[
         TextCellValue(DateFormat('yyyy-MM-dd').format(expense.date)),
         expense.serialNo == null
-            ? const TextCellValue('')
+            ? TextCellValue('')
             : IntCellValue(expense.serialNo!),
         TextCellValue(expense.displayDescription),
         TextCellValue(expense.unit ?? '1'),
@@ -306,7 +306,7 @@ class ExcelExportService {
       _currencyCell(sheet, totalColumn, row);
     }
     final totalRow = ExpenseCategory.values.length + 1;
-    _set(sheet, 0, totalRow, const TextCellValue('MONTHLY TOTAL'));
+    _set(sheet, 0, totalRow, TextCellValue('MONTHLY TOTAL'));
     _styleRow(sheet, totalRow, headers.length, _totalStyle());
     for (var column = 1; column < headers.length; column++) {
       final letter = _columnName(column);
@@ -396,7 +396,7 @@ class ExcelExportService {
       _percentCell(sheet, 3, row);
     }
     const totalRow = 11;
-    _set(sheet, 0, totalRow, const TextCellValue('TOTAL'));
+    _set(sheet, 0, totalRow, TextCellValue('TOTAL'));
     _set(
       sheet,
       1,
@@ -641,8 +641,8 @@ class ExcelExportService {
     const categoryColumn = 33;
     const trendColumn = 36;
     final chartMonths = months.isEmpty ? ['No data'] : months;
-    _set(sheet, monthlyColumn, 0, const TextCellValue('Month'));
-    _set(sheet, monthlyColumn + 1, 0, const TextCellValue('Total Spend'));
+    _set(sheet, monthlyColumn, 0, TextCellValue('Month'));
+    _set(sheet, monthlyColumn + 1, 0, TextCellValue('Total Spend'));
     for (var index = 0; index < chartMonths.length; index++) {
       final month = chartMonths[index];
       _set(sheet, monthlyColumn, index + 1, TextCellValue(month));
@@ -654,8 +654,8 @@ class ExcelExportService {
       );
     }
 
-    _set(sheet, categoryColumn, 0, const TextCellValue('Category'));
-    _set(sheet, categoryColumn + 1, 0, const TextCellValue('Total Spend'));
+    _set(sheet, categoryColumn, 0, TextCellValue('Category'));
+    _set(sheet, categoryColumn + 1, 0, TextCellValue('Total Spend'));
     for (var index = 0; index < ExpenseCategory.values.length; index++) {
       final category = ExpenseCategory.values[index];
       _set(sheet, categoryColumn, index + 1, TextCellValue(category.label));
@@ -671,7 +671,7 @@ class ExcelExportService {
         .where((category) => (categoryTotals[category] ?? 0) > 0)
         .toList();
     if (trendCategories.isEmpty) trendCategories.add(ExpenseCategory.other);
-    _set(sheet, trendColumn, 0, const TextCellValue('Month'));
+    _set(sheet, trendColumn, 0, TextCellValue('Month'));
     for (
       var categoryIndex = 0;
       categoryIndex < trendCategories.length;
