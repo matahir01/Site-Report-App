@@ -51,7 +51,8 @@ class DatabaseHelper {
   }
 
   Future<String> getDbPath() async {
-    if (_databasePathOverride != null) return _databasePathOverride!;
+    final overridePath = _databasePathOverride;
+    if (overridePath != null) return overridePath;
     final dbPath = await getDatabasesPath();
     return join(dbPath, 'site_daily_log.db');
   }

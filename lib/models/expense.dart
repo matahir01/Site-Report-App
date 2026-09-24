@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 /// The 10 mandatory, locked expense categories.
 enum ExpenseCategory {
   fuelAndLubricants,

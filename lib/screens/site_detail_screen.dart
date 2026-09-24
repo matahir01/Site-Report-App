@@ -44,7 +44,6 @@ class _SiteDetailScreenState extends State<SiteDetailScreen> {
   double _totalSpend = 0.0;
   double _totalFloat = 0.0;
   double _currentBalance = 0.0;
-  double _todayExpenses = 0.0;
   bool _hasTodayFloat = false;
   bool _generatingPdf = false;
   bool _generatingExcel = false;
@@ -89,7 +88,6 @@ class _SiteDetailScreenState extends State<SiteDetailScreen> {
       _materials = materials;
       _totalSpend = spend;
       _totalFloat = float;
-      _todayExpenses = todayExpenses;
       _hasTodayFloat = todayFloat != null;
       _currentBalance = opening + floatReceivedToday - todayExpenses;
     });

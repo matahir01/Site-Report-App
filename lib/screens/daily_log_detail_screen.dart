@@ -612,8 +612,10 @@ class _DailyLogDetailScreenState extends State<DailyLogDetailScreen> {
               border: Border.all(color: Colors.blueGrey.shade200),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: available
-                ? Image.file(File(path!), fit: BoxFit.contain)
+            child: path != null &&
+                    path.isNotEmpty &&
+                    File(path).existsSync()
+                ? Image.file(File(path), fit: BoxFit.contain)
                 : const Center(
                     child: Text(
                       'Not signed',
