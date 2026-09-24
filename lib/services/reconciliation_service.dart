@@ -32,20 +32,33 @@ class ReconciliationService {
       lineItemTotals.fold<double>(0, (sum, value) => sum + value),
     );
     final expected = money(openingBalance + floatReceived - totalExpenses);
-    final variance = money(reportedClosingBalance - expected);
+    final expectedCash = expected > 0 ? expected : 0.0;
+    final outOfPocketAdvance = expected < 0 ? money(-expected) : 0.0;
+    final variance = money(reportedClosingBalance - expectedCash);
     return ReconciliationResult(
       totalExpenses: totalExpenses,
       expectedClosingBalance: expected,
+      expectedCashClosingBalance: expectedCash,
+      outOfPocketAdvance: outOfPocketAdvance,
       variance: variance,
       status: variance == 0 ? CashFloatStatus.ok : CashFloatStatus.check,
-      isOutOfPocketDeficit: expected < 0,
+      isOutOfPocketDeficit: outOfPocketAdvance > 0,
     );
   }
 }
 
 class ReconciliationResult {
   final double totalExpenses;
+  /// Signed site position carried into the next day. Negative means the site
+  /// owes the engineer/site supervisor for personal funds already spent.
   final double expectedClosingBalance;
+
+  /// Physical cash expected to be on hand. This value is never negative.
+  final double expectedCashClosingBalance;
+
+  /// Personal money currently advanced by the engineer/site supervisor.
+  final double outOfPocketAdvance;
+
   final double variance;
   final CashFloatStatus status;
   final bool isOutOfPocketDeficit;
@@ -53,6 +66,8 @@ class ReconciliationResult {
   const ReconciliationResult({
     required this.totalExpenses,
     required this.expectedClosingBalance,
+    required this.expectedCashClosingBalance,
+    required this.outOfPocketAdvance,
     required this.variance,
     required this.status,
     required this.isOutOfPocketDeficit,

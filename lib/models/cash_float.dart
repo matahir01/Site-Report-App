@@ -34,13 +34,22 @@ class CashFloat {
   double get expectedClosingBalance =>
       _roundCurrency(openingBalance + floatReceived - totalExpenses);
 
+  /// Physical cash cannot be negative. A negative net position means the
+  /// engineer/site supervisor has funded the site personally.
+  double get expectedCashClosingBalance =>
+      expectedClosingBalance > 0 ? expectedClosingBalance : 0.0;
+
+  double get outOfPocketAdvance => expectedClosingBalance < 0
+      ? _roundCurrency(-expectedClosingBalance)
+      : 0.0;
+
   double get variance =>
-      _roundCurrency(reportedClosingBalance - expectedClosingBalance);
+      _roundCurrency(reportedClosingBalance - expectedCashClosingBalance);
 
   CashFloatStatus get status =>
       variance == 0 ? CashFloatStatus.ok : CashFloatStatus.check;
 
-  bool get isOutOfPocketDeficit => expectedClosingBalance < 0;
+  bool get isOutOfPocketDeficit => outOfPocketAdvance > 0;
 
   String? get deficitLabel => isOutOfPocketDeficit
       ? 'Site Supervisor Deficit / Out-of-pocket Advance'
