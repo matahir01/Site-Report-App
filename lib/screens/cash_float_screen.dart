@@ -8,11 +8,8 @@ import '../services/google_sheets_service.dart';
 import '../services/reconciliation_service.dart';
 import '../utils/currency_formatter.dart';
 
-/// Daily cash-float reconciliation.
-///
-/// The signed closing position is carried forward between days. When that
-/// position is negative it represents personal money advanced by the engineer,
-/// not negative physical cash.
+/// Daily cash-float reconciliation: opening balance, float received,
+/// auto-calculated expected closing vs supervisor-reported closing.
 class CashFloatScreen extends StatefulWidget {
   final String siteId;
   final String siteName;
@@ -118,9 +115,7 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
         SnackBar(
           content: Text(
             result.status == CashFloatStatus.ok
-                ? (result.isOutOfPocketDeficit
-                      ? 'Reconciled: engineer out-of-pocket advance recorded'
-                      : 'Cash float reconciled: OK')
+                ? 'Cash float reconciled: OK'
                 : 'Variance detected: CHECK / MISMATCH',
           ),
           backgroundColor: result.status == CashFloatStatus.ok
@@ -143,8 +138,6 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
       reportedClosingBalance: reported,
     );
     final expected = result.expectedClosingBalance;
-    final expectedCash = result.expectedCashClosingBalance;
-    final outOfPocketAdvance = result.outOfPocketAdvance;
     final variance = result.variance;
 
     return Scaffold(
@@ -223,10 +216,8 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Engineer Out-of-pocket Advance: '
-                              '${CurrencyFormatter.format(outOfPocketAdvance)}. '
-                              'Physical cash closing is '
-                              '${CurrencyFormatter.format(expectedCash)}.',                              style: TextStyle(
+                              'Site Supervisor Deficit / Out-of-pocket Advance',
+                              style: TextStyle(
                                 color: Colors.orange.shade800,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -235,16 +226,13 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
                         ],
                       ),
                     ),
-                  _buildCurrencyField(
-                    _openingController,
-                    'Opening / Carry-forward Balance',
-                  ),
+                  _buildCurrencyField(_openingController, 'Opening Balance'),
                   const SizedBox(height: 12),
                   _buildCurrencyField(_floatController, 'Float Received Today'),
                   const SizedBox(height: 12),
                   _buildCurrencyField(
                     _reportedController,
-                    'Reported Cash Closing Balance',
+                    'Reported Closing Balance',
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -271,7 +259,7 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
                             ),
                           ),
                           const Divider(height: 24),
-                          _buildSummaryRow('Opening / Carry-forward', opening),
+                          _buildSummaryRow('Opening Balance', opening),
                           _buildSummaryRow('Float Received', floatReceived),
                           _buildSummaryRow(
                             'Daily Expenses',
@@ -279,31 +267,12 @@ class _CashFloatScreenState extends State<CashFloatScreen> {
                             isDeduction: true,
                           ),
                           const Divider(),
-                          if (result.isOutOfPocketDeficit) ...[
-                            _buildSummaryRow(
-                              'Expected Cash Closing',
-                              expectedCash,
-                              isBold: true,
-                            ),
-                            _buildSummaryRow(
-                              'Engineer Out-of-pocket Advance',
-                              outOfPocketAdvance,
-                              isHighlight: true,
-                            ),
-                            _buildSummaryRow(
-                              'Net Carry-forward',
-                              expected,
-                            ),
-                          ] else
-                            _buildSummaryRow(
-                              'Expected Closing',
-                              expectedCash,
-                              isBold: true,
-                            ),
                           _buildSummaryRow(
-                            'Reported Cash Closing',
-                            reported,
+                            'Expected Closing',
+                            expected,
+                            isBold: true,
                           ),
+                          _buildSummaryRow('Reported Closing', reported),
                           const Divider(),
                           _buildSummaryRow(
                             'Variance',

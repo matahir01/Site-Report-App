@@ -26,58 +26,22 @@ void main() {
       expect(result.isOutOfPocketDeficit, isFalse);
     });
 
-    test('treats a negative position as engineer advance, not negative cash', () {
+    test('flags mismatch and out-of-pocket deficit independently', () {
       final result = ReconciliationService.reconcile(
         openingBalance: 1000,
         floatReceived: 0,
         lineItemTotals: const [1500],
-        reportedClosingBalance: 0,
+        reportedClosingBalance: -450,
       );
 
       expect(result.expectedClosingBalance, -500);
-      expect(result.expectedCashClosingBalance, 0);
-      expect(result.outOfPocketAdvance, 500);
-      expect(result.variance, 0);
-      expect(result.status, CashFloatStatus.ok);
+      expect(result.variance, 50);
+      expect(result.status, CashFloatStatus.check);
       expect(result.isOutOfPocketDeficit, isTrue);
       expect(
         result.deficitLabel,
         'Site Supervisor Deficit / Out-of-pocket Advance',
       );
-    });
-
-    test('still flags unaccounted cash after a deficit is funded', () {
-      final result = ReconciliationService.reconcile(
-        openingBalance: -53070,
-        floatReceived: 150000,
-        lineItemTotals: const [6500],
-        reportedClosingBalance: 6500,
-      );
-
-      expect(result.expectedClosingBalance, 90430);
-      expect(result.expectedCashClosingBalance, 90430);
-      expect(result.outOfPocketAdvance, 0);
-      expect(result.variance, -83930);
-      expect(result.status, CashFloatStatus.check);
-      expect(result.isOutOfPocketDeficit, isFalse);
-    });
-
-    test('CashFloat preserves signed carry-forward while reconciling cash', () {
-      final cashFloat = CashFloat(
-        id: 'cash-1',
-        siteId: 'site-1',
-        date: DateTime(2026, 9, 24),
-        openingBalance: 0,
-        floatReceived: 0,
-        totalExpenses: 53070,
-        reportedClosingBalance: 0,
-      );
-
-      expect(cashFloat.expectedClosingBalance, -53070);
-      expect(cashFloat.expectedCashClosingBalance, 0);
-      expect(cashFloat.outOfPocketAdvance, 53070);
-      expect(cashFloat.variance, 0);
-      expect(cashFloat.status, CashFloatStatus.ok);
     });
 
     test('rounds currency before comparing variance', () {
